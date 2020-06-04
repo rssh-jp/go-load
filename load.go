@@ -1,11 +1,12 @@
 package load
 
 import (
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/mem"
-	"github.com/shirou/gopsutil/process"
+    "context"
 	"log"
 	"time"
+
+    "github.com/rssh-jp/go-load/cpu"
+    "github.com/rssh-jp/go-load/memory"
 )
 
 type Load struct {
@@ -41,84 +42,53 @@ func New(opts ...Option) *Load {
 	return l
 }
 
+type Loader interface{
+    Load(context.Context, chan <- error)
+}
+
+type ErrLoader struct{
+    loader Loader
+    err chan error
+}
+
 func (l *Load) Run() error {
 	log.Println("START", l)
 	defer log.Println("END")
 
-	// cpu
-	cpuinfos, err := cpu.Info()
-	if err != nil {
-		return err
-	}
+    ticker := time.NewTicker(l.Duration)
 
-	for _, cpuinfo := range cpuinfos {
-		log.Println(cpuinfo)
-	}
+    ctx, cancel := context.WithCancel(context.Background())
 
-	// process
-	procs, err := process.Processes()
-	if err != nil {
-		return err
-	}
+    defer cancel()
 
-	var cpupercent float64
-	for _, proc := range procs {
-		per, err := proc.CPUPercent()
-		if err != nil {
-			return err
-		}
+    chErrMemory := make(chan error)
+    chErrCPU := make(chan error)
 
-		cpupercent += per
-	}
+    defer close(chErrMemory)
+    defer close(chErrCPU)
 
-	log.Println("cpu", cpupercent, "%")
+    errLoader := make([]ErrLoader, 0, 8)
+
+    errLoader = append(errLoader, ErrLoader{memory.New(l.Memory), make(chan error)})
+    errLoader = append(errLoader, ErrLoader{cpu.New(l.CPU), make(chan error)})
+
 
 	// memory
-	m, err := memoryLoad(l.Memory)
-	if err != nil {
-		return err
-	}
+    m := memory.New(l.Memory)
+	go m.Load(ctx, chErrMemory)
 
-	defer m.Close()
+    // cpu
+    c := cpu.New(l.CPU)
+    go c.Load(ctx, chErrCPU)
 
-	time.Sleep(l.Duration)
+    select{
+    case <-ticker.C:
+    case err := <-chErrMemory:
+        return err
+    case err := <-chErrCPU:
+        return err
+    }
 
 	return nil
 }
 
-type memory struct {
-	buf []byte
-}
-
-func (m *memory) Close() {
-	m.buf = nil
-}
-func memoryLoad(per float64) (*memory, error) {
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		return nil, err
-	}
-
-	log.Println("mem", vm)
-	//expectUse := uint64(float64(vm.Total) * per / 100)
-	expectUse := uint64(float64(vm.Available) * per / 100)
-	diff := expectUse - vm.Used
-
-	log.Println(expectUse, diff)
-
-	m := new(memory)
-	m.buf = make([]byte, diff, diff)
-
-	for i := 0; i < int(diff); i++ {
-		m.buf[i] = 1
-	}
-
-	vm, err = mem.VirtualMemory()
-	if err != nil {
-		return nil, err
-	}
-
-	log.Println("mem", vm)
-
-	return m, nil
-}
