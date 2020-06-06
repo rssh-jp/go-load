@@ -1,12 +1,11 @@
 package load
 
 import (
-    "context"
-	"log"
+	"context"
 	"time"
 
-    "github.com/rssh-jp/go-load/cpu"
-    "github.com/rssh-jp/go-load/memory"
+	"github.com/rssh-jp/go-load/cpu"
+	"github.com/rssh-jp/go-load/memory"
 )
 
 type Load struct {
@@ -42,53 +41,39 @@ func New(opts ...Option) *Load {
 	return l
 }
 
-type Loader interface{
-    Load(context.Context, chan <- error)
-}
-
-type ErrLoader struct{
-    loader Loader
-    err chan error
+type Loader interface {
+	Load(context.Context) error
 }
 
 func (l *Load) Run() error {
-	log.Println("START", l)
-	defer log.Println("END")
+	ticker := time.NewTicker(l.Duration)
 
-    ticker := time.NewTicker(l.Duration)
+	ctx, cancel := context.WithCancel(context.Background())
 
-    ctx, cancel := context.WithCancel(context.Background())
+	chErr := make(chan error, 2)
 
-    defer cancel()
+	defer close(chErr)
 
-    chErrMemory := make(chan error)
-    chErrCPU := make(chan error)
+	loaders := make([]Loader, 0, 8)
 
-    defer close(chErrMemory)
-    defer close(chErrCPU)
+	loaders = append(loaders, memory.New(l.Memory))
+	loaders = append(loaders, cpu.New(l.CPU))
 
-    errLoader := make([]ErrLoader, 0, 8)
+	for _, loader := range loaders {
+		go func(l Loader) {
+			err := l.Load(ctx)
+			if err != nil {
+				chErr <- err
+			}
+		}(loader)
+	}
 
-    errLoader = append(errLoader, ErrLoader{memory.New(l.Memory), make(chan error)})
-    errLoader = append(errLoader, ErrLoader{cpu.New(l.CPU), make(chan error)})
-
-
-	// memory
-    m := memory.New(l.Memory)
-	go m.Load(ctx, chErrMemory)
-
-    // cpu
-    c := cpu.New(l.CPU)
-    go c.Load(ctx, chErrCPU)
-
-    select{
-    case <-ticker.C:
-    case err := <-chErrMemory:
-        return err
-    case err := <-chErrCPU:
-        return err
-    }
+	select {
+	case <-ticker.C:
+		cancel()
+	case err := <-chErr:
+		return err
+	}
 
 	return nil
 }
-

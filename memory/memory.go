@@ -1,32 +1,29 @@
 package memory
 
-import(
-    "context"
-    "log"
+import (
+	"context"
 
 	"github.com/shirou/gopsutil/mem"
 )
 
-type Instance struct{
-    per float64
-}
-func New(per float64)*Instance{
-    return &Instance{
-        per: per,
-    }
+type Instance struct {
+	per float64
 }
 
-func (inst Instance)Load(ctx context.Context, chErr chan <- error) {
+func New(per float64) *Instance {
+	return &Instance{
+		per: per,
+	}
+}
+
+func (inst Instance) Load(ctx context.Context) error {
 	vm, err := mem.VirtualMemory()
 	if err != nil {
-		chErr <- err
+		return err
 	}
 
-	log.Println("mem", vm)
 	expectUse := uint64(float64(vm.Total) * inst.per / 100)
 	diff := expectUse - vm.Used
-
-	log.Println(expectUse, diff)
 
 	buf := make([]byte, diff, diff)
 
@@ -34,15 +31,9 @@ func (inst Instance)Load(ctx context.Context, chErr chan <- error) {
 		buf[i] = 1
 	}
 
-	vm, err = mem.VirtualMemory()
-	if err != nil {
-		chErr <- err
+	select {
+	case <-ctx.Done():
 	}
 
-	log.Println("mem", vm)
-
-    select{
-    case <-ctx.Done():
-    }
+	return nil
 }
-

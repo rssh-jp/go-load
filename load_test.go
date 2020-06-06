@@ -6,6 +6,6 @@ import (
 )
 
 func TestSuccess(t *testing.T) {
-	l := New(OptionMemoryPercentage(50), OptionCPUPercentage(50), OptionDuration(time.Second*5))
+	l := New(OptionMemoryPercentage(50), OptionCPUPercentage(50), OptionDuration(time.Second*60))
 	l.Run()
 }
