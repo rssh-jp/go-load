@@ -68,16 +68,26 @@ if err := l.Run(); err != nil {
 
 - Go 1.26 以上
 
-## テスト
+## 開発コマンド
+
+| コマンド | 説明 |
+|----------|------|
+| `make build` | CLI バイナリを `bin/load` にビルドする |
+| `make test` | ユニットテストを実行する |
+| `make vet` | 静的解析を実行する |
+| `make run` | デフォルト設定 (CPU 80%, Mem 70%, 30s) でローカル実行する |
+| `make clean` | ビルド成果物 (`bin/`) を削除する |
 
 ```bash
-go test ./...
+# ビルド
+make build
+
+# テスト
+make test
+
+# ローカル実行（CPU 80%、メモリ 70%、30秒）
+make run
 ```
-
-## ビルド
-
-```bash
-go build ./cmd/load/...
 ```
 
 ## 内部構造
