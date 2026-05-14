@@ -21,7 +21,7 @@ go-load/
 
 ## コーディングルール
 
-- Go 1.25 以上の構文・機能を使用する
+- Go 1.26 以上の構文・機能を使用する
 - 外部依存ライブラリは持たない（標準ライブラリのみ）
 - `cpu` パッケージ: `runtime` と `time` のみ使用
 - `memory` パッケージ: `bufio`/`os`/`strconv`/`strings`/`runtime` のみ使用（`/proc/meminfo` を直接読む）
@@ -56,14 +56,36 @@ go-load/
 
 ```bash
 # ビルド確認
+make build
+# または
 go build ./...
 
 # テスト実行
+make test
+# または
 go test ./...
 
 # 静的解析
+make vet
+# または
 go vet ./...
+
+# ローカル実行（CPU 80%、メモリ 70%、30秒）
+make run
+
+# ビルド成果物の削除
+make clean
 ```
+
+## Makefile ターゲット一覧
+
+| ターゲット | 説明 |
+|-----------|------|
+| `make build` | CLI バイナリを `bin/load` にビルドする |
+| `make test` | ユニットテストを実行する |
+| `make vet` | 静的解析を実行する |
+| `make run` | デフォルト設定 (CPU 80%, Mem 70%, 30s) でローカル実行する |
+| `make clean` | ビルド成果物 (`bin/`) を削除する |
 
 ## 依存更新
 

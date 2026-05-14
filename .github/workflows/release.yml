@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: make build
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          # 自動生成チェンジログを取得
+          CHANGELOG=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="$TAG" --jq '.body')
+
+          # リリースノート本文を作成
+          {
+            echo "## インストール"
+            echo ""
+            echo '```bash'
+            echo "go install github.com/rssh-jp/go-load/cmd/load@${TAG}"
+            echo '```'
+            echo ""
+            echo "## 使い方"
+            echo ""
+            echo '```bash'
+            echo "# CPU 70%、メモリ 60%、30 秒間負荷をかける"
+            echo "load -cpu 70 -mem 60 -duration 30s"
+            echo ""
+            echo "# オプション一覧"
+            echo "load -h"
+            echo '```'
+            echo ""
+            echo "| フラグ | デフォルト | 説明 |"
+            echo "|--------|-----------|------|"
+            echo '| `-cpu` | `50` | CPU 使用率 (%) |'
+            echo '| `-mem` | `50` | メモリ使用率 (%) |'
+            echo '| `-duration` | `60s` | 負荷をかける時間 (`30s`, `1m`, `2h` 形式) |'
+            echo ""
+            echo "---"
+            echo ""
+            printf '%s\n' "$CHANGELOG"
+          } > /tmp/release-notes.md
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file /tmp/release-notes.md
