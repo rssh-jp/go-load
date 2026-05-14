@@ -2,84 +2,69 @@ package cpu
 
 import (
 	"context"
-	"sync"
+	"runtime"
 	"time"
-
-	"github.com/shirou/gopsutil/cpu"
 )
+
+// windowSize は duty-cycle の1周期
+const windowSize = 100 * time.Millisecond
 
 type Instance struct {
 	per float64
 }
 
 func New(per float64) *Instance {
-	return &Instance{
-		per: per,
-	}
+	return &Instance{per: per}
 }
 
 func (inst Instance) Load(ctx context.Context) error {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	numCPU := runtime.NumCPU()
+	done := make(chan struct{}, numCPU)
 
-LOOP:
+	for i := 0; i < numCPU; i++ {
+		go func() {
+			loadCore(ctx, inst.per)
+			done <- struct{}{}
+		}()
+	}
+
+	for i := 0; i < numCPU; i++ {
+		<-done
+	}
+	return nil
+}
+
+// loadCore は 1コア分のデューティサイクルを実行する。
+// per% の時間だけビジーループ、残り (100-per)% はスリープ。
+func loadCore(ctx context.Context, per float64) {
+	busy := time.Duration(float64(windowSize) * per / 100)
+	idle := windowSize - busy
+
 	for {
-		select {
-		case <-ticker.C:
-			err := inst.useCPU()
-			if err != nil {
-				return err
+		// ビジーフェーズ
+		if busy > 0 {
+			end := time.Now().Add(busy)
+			for time.Now().Before(end) {
+				// 意図的なビジーループ
 			}
-		case <-ctx.Done():
-			break LOOP
 		}
-	}
 
-	return nil
-}
+		// アイドルフェーズ
+		if idle <= 0 {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			continue
+		}
 
-func (inst Instance) useCPU() error {
-	// cpu
-	cpuinfos, err := cpu.Times(true)
-	if err != nil {
-		return err
-	}
-
-	var wg sync.WaitGroup
-	for i := 0; i < len(cpuinfos); i++ {
-		wg.Add(1)
-		go func(cpuindex int) {
-			defer wg.Done()
-			load(cpuindex, inst.per)
-		}(i)
-	}
-	wg.Wait()
-
-	return nil
-}
-
-func load(cpuindex int, per float64) {
-	cpuinfos, err := cpu.Times(true)
-	if err != nil {
-		return
-	}
-
-	if cpuindex >= len(cpuinfos) {
-		return
-	}
-
-	cpuinfo := cpuinfos[cpuindex]
-
-	expectUse := (cpuinfo.Total() * per) / 100
-	diff := expectUse - (cpuinfo.Total() - cpuinfo.Idle)
-
-	diffbyte := int(diff * 1000 * 1000)
-
-	// どれくらい負荷をかけるかの目安
-	count := int(diffbyte * 72 / 100)
-
-	work := 100
-	for i := 0; i < count; i++ {
-		work /= 2
+		timer := time.NewTimer(idle)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
 }

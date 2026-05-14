@@ -46,31 +46,28 @@ type Loader interface {
 }
 
 func (l *Load) Run() error {
-	ticker := time.NewTicker(l.Duration)
-
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	chErr := make(chan error, 2)
 
-	defer close(chErr)
-
-	loaders := make([]Loader, 0, 8)
-
+	loaders := make([]Loader, 0, 2)
 	loaders = append(loaders, memory.New(l.Memory))
 	loaders = append(loaders, cpu.New(l.CPU))
 
 	for _, loader := range loaders {
-		go func(l Loader) {
-			err := l.Load(ctx)
-			if err != nil {
+		go func(ld Loader) {
+			if err := ld.Load(ctx); err != nil {
 				chErr <- err
 			}
 		}(loader)
 	}
 
+	timer := time.NewTimer(l.Duration)
+	defer timer.Stop()
+
 	select {
-	case <-ticker.C:
-		cancel()
+	case <-timer.C:
 	case err := <-chErr:
 		return err
 	}
