@@ -14,7 +14,7 @@ go-load/
 ├── cpu/
 │   └── cpu.go         # CPU 負荷（duty-cycle 方式、外部依存なし）
 ├── memory/
-│   └── memory.go      # メモリ負荷 (gopsutil v3/mem)
+│   └── memory.go      # メモリ負荷（/proc/meminfo 直読み、外部依存なし）
 └── cmd/load/
     └── main.go        # CLI エントリーポイント
 ```
@@ -22,8 +22,9 @@ go-load/
 ## コーディングルール
 
 - Go 1.25 以上の構文・機能を使用する
-- 依存ライブラリは `github.com/shirou/gopsutil/v3` のみ（最小依存を維持する）
-- `cpu` パッケージは gopsutil を使用しない（`runtime` と `time` のみ）
+- 外部依存ライブラリは持たない（標準ライブラリのみ）
+- `cpu` パッケージ: `runtime` と `time` のみ使用
+- `memory` パッケージ: `bufio`/`os`/`strconv`/`strings`/`runtime` のみ使用（`/proc/meminfo` を直接読む）
 - エラーは呼び出し元に返す。内部パッケージ（`cpu`, `memory`）でのログ出力は禁止
 - `Load.Run()` は `defer cancel()` で必ず context をキャンセルしてゴルーチンを終了させる
 - Functional Options パターン（`OptionXxx`）でパラメータを追加する
@@ -66,7 +67,8 @@ go vet ./...
 
 ## 依存更新
 
+外部依存なし。標準ライブラリのみ使用のため `go mod tidy` のみで十分。
+
 ```bash
-go get github.com/shirou/gopsutil/v3@latest
 go mod tidy
 ```
